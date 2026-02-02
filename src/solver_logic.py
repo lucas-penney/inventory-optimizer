@@ -1,8 +1,122 @@
 import pandas as pd
 import numpy as np
 from scipy.stats import norm
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 import pulp
+
+def validate_data_schema(df: pd.DataFrame) -> Tuple[bool, List[str]]:
+    """
+    Validates that the input DataFrame has the correct schema and data types
+    required for the optimization solver.
+    
+    Args:
+        df (pd.DataFrame): Input DataFrame to validate
+        
+    Returns:
+        Tuple[bool, List[str]]: (is_valid, list_of_errors)
+    """
+    errors = []
+    
+    # Required month columns
+    month_columns = ['Dec-24', 'Jan-25', 'Feb-25', 'Mar-25', 'Apr-25', 'May-25', 
+                     'Jun-25', 'Jul-25', 'Aug-25', 'Sep-25', 'Oct-25']
+    
+    # Required core columns
+    required_columns = [
+        'AdjustedAnnualSales',
+        'Lead Time (Days)',
+        'COST',
+        'Wholesale vs Direct',
+        'Winery',
+        'Is_Anchor',
+        'Is_By_the_Bottle'
+    ]
+    
+    # Check for required columns
+    missing_columns = []
+    for col in month_columns + required_columns:
+        if col not in df.columns:
+            missing_columns.append(col)
+    
+    if missing_columns:
+        errors.append(f"Missing required columns: {', '.join(missing_columns)}")
+        return False, errors
+    
+    # Check data types and values for month columns
+    for col in month_columns:
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            errors.append(f"Column '{col}' must be numeric")
+        else:
+            # Check for negative values
+            if (df[col] < 0).any():
+                errors.append(f"Column '{col}' contains negative values (sales cannot be negative)")
+    
+    # Check AdjustedAnnualSales
+    if not pd.api.types.is_numeric_dtype(df['AdjustedAnnualSales']):
+        errors.append("Column 'AdjustedAnnualSales' must be numeric")
+    else:
+        if (df['AdjustedAnnualSales'] <= 0).any():
+            errors.append("Column 'AdjustedAnnualSales' must contain only positive values")
+        if df['AdjustedAnnualSales'].isna().any():
+            errors.append("Column 'AdjustedAnnualSales' contains null values")
+    
+    # Check Lead Time (Days)
+    if not pd.api.types.is_numeric_dtype(df['Lead Time (Days)']):
+        errors.append("Column 'Lead Time (Days)' must be numeric")
+    else:
+        if (df['Lead Time (Days)'] <= 0).any():
+            errors.append("Column 'Lead Time (Days)' must contain only positive values")
+        if df['Lead Time (Days)'].isna().any():
+            errors.append("Column 'Lead Time (Days)' contains null values")
+    
+    # Check COST
+    if not pd.api.types.is_numeric_dtype(df['COST']):
+        errors.append("Column 'COST' must be numeric")
+    else:
+        if (df['COST'] <= 0).any():
+            errors.append("Column 'COST' must contain only positive values")
+        if df['COST'].isna().any():
+            errors.append("Column 'COST' contains null values")
+    
+    # Check Wholesale vs Direct
+    if df['Wholesale vs Direct'].isna().any():
+        errors.append("Column 'Wholesale vs Direct' contains null values")
+    else:
+        valid_values = {'Wholesaler', 'Direct'}
+        invalid_values = set(df['Wholesale vs Direct'].unique()) - valid_values
+        if invalid_values:
+            errors.append(f"Column 'Wholesale vs Direct' contains invalid values: {', '.join(map(str, invalid_values))}. Must be 'Wholesaler' or 'Direct'")
+    
+    # Check Winery (can have nulls/NA, but should be string type)
+    if not pd.api.types.is_object_dtype(df['Winery']) and not pd.api.types.is_string_dtype(df['Winery']):
+        errors.append("Column 'Winery' must be string/object type")
+    
+    # Check Is_Anchor
+    if not pd.api.types.is_numeric_dtype(df['Is_Anchor']):
+        errors.append("Column 'Is_Anchor' must be numeric")
+    else:
+        if df['Is_Anchor'].isna().any():
+            errors.append("Column 'Is_Anchor' contains null values")
+        invalid_values = set(df['Is_Anchor'].unique()) - {0, 1}
+        if invalid_values:
+            errors.append(f"Column 'Is_Anchor' contains invalid values: {', '.join(map(str, invalid_values))}. Must be 0 or 1")
+    
+    # Check Is_By_the_Bottle
+    if not pd.api.types.is_numeric_dtype(df['Is_By_the_Bottle']):
+        errors.append("Column 'Is_By_the_Bottle' must be numeric")
+    else:
+        if df['Is_By_the_Bottle'].isna().any():
+            errors.append("Column 'Is_By_the_Bottle' contains null values")
+        invalid_values = set(df['Is_By_the_Bottle'].unique()) - {0, 1}
+        if invalid_values:
+            errors.append(f"Column 'Is_By_the_Bottle' contains invalid values: {', '.join(map(str, invalid_values))}. Must be 0 or 1")
+    
+    # Check if DataFrame is empty
+    if len(df) == 0:
+        errors.append("DataFrame is empty - no rows to process")
+    
+    is_valid = len(errors) == 0
+    return is_valid, errors
 
 def generate_order_menu(
         row: pd.Series, 
@@ -132,7 +246,7 @@ def prepare_optimization_data(
     
     return df_prep, optimization_params
 
-def run_optimization(df: pd.DataFrame, params: dict, v_max: int) -> pd.DataFrame:
+def run_optimization(df: pd.DataFrame, params: dict, v_max: int) -> Tuple[pd.DataFrame, float]:
     """
     Solves inventory optimization MILP using PuLP.
     Args:
@@ -140,7 +254,7 @@ def run_optimization(df: pd.DataFrame, params: dict, v_max: int) -> pd.DataFrame
         params (dict): Dictionary with optimization parameters (Q_options, C_ik).
         v_max (int): Maximum storage capacity constraint.
     Returns:
-        pd.DataFrame: DataFrame updated with optimization results.
+        Tuple[pd.DataFrame, float]: DataFrame updated with optimization results and objective value.
     """
     # Initialize the Problem
     prob = pulp.LpProblem("Inventory_MILP", pulp.LpMinimize)
@@ -224,7 +338,10 @@ def run_optimization(df: pd.DataFrame, params: dict, v_max: int) -> pd.DataFrame
     # 6. Solve
     prob.solve(pulp.PULP_CBC_CMD(msg=0))
 
-    # 7. Extract Results
+    # 7. Extract Objective Value
+    objective_value = pulp.value(prob.objective)
+
+    # 8. Extract Results
     order_results = []
     r_points = []
     m_levels = []
@@ -248,5 +365,410 @@ def run_optimization(df: pd.DataFrame, params: dict, v_max: int) -> pd.DataFrame
     df['Reorder_Point_R'] = r_points
     df['Order_Up_To_M'] = m_levels
     
-    return df
+    return df, objective_value
+
+def extract_metrics_from_results(results_df: pd.DataFrame, objective_value: float, 
+                                capacity: int = None,
+                                fixed_order_cost: float = None,
+                                holding_cost_pct: float = None) -> Dict[str, Any]:
+    """
+    Extract aggregate metrics from optimization results DataFrame.
+    
+    Args:
+        results_df: DataFrame with optimization results (must have Recommended_Order, 
+                   Reorder_Point_R, Order_Up_To_M, AdjustedAnnualSales, COST, Safety_Stock columns)
+        objective_value: Total objective value from optimization
+        capacity: Storage capacity (optional, for calculating Storage_%)
+        fixed_order_cost: Fixed cost per order (optional, for calculating Ordering_Cost)
+        holding_cost_pct: Holding cost as decimal (optional, for calculating Holding_Cost)
+        
+    Returns:
+        Dictionary with metrics: Total_Cost, Holding_Cost (if params provided), 
+        Ordering_Cost (if params provided), Orders/Yr, Storage_%, Avg_Order_Size, 
+        Avg_Reorder_Pt, Avg_Order_Up_To, Avg_Days_Supply
+    """
+    # Calculate ordering frequency
+    orders_per_year = (results_df['AdjustedAnnualSales'] / results_df['Recommended_Order']).replace([np.inf, -np.inf], 0)
+    total_orders = orders_per_year.sum()
+    
+    # Calculate average metrics
+    avg_order_size = results_df['Recommended_Order'].mean()
+    avg_reorder_pt = results_df['Reorder_Point_R'].mean()
+    avg_order_up_to = results_df['Order_Up_To_M'].mean()
+    
+    # Average days supply
+    days_supply = (results_df['Recommended_Order'] / results_df['AdjustedAnnualSales'] * 365).replace([np.inf, -np.inf], 0)
+    avg_days_supply = days_supply.mean()
+    
+    # Storage utilization
+    if capacity is not None and capacity > 0:
+        total_storage_used = results_df['Order_Up_To_M'].sum()
+        storage_pct = (total_storage_used / capacity) * 100
+    else:
+        storage_pct = np.nan
+    
+    # Initialize metrics dictionary
+    metrics = {
+        'Total_Cost': objective_value,
+        'Orders/Yr': total_orders,
+        'Storage_%': storage_pct,
+        'Avg_Order_Size (Q)': avg_order_size,
+        'Avg_Reorder_Pt (R)': avg_reorder_pt,
+        'Avg_Order_Up_To (M)': avg_order_up_to,
+        'Avg_Days_Supply': avg_days_supply
+    }
+    
+    # Calculate cost components if parameters are provided
+    if fixed_order_cost is not None and holding_cost_pct is not None:
+        holding_cost, ordering_cost = calculate_cost_components(
+            results_df, fixed_order_cost, holding_cost_pct
+        )
+        metrics['Holding_Cost'] = holding_cost
+        metrics['Ordering_Cost'] = ordering_cost
+    
+    return metrics
+
+def calculate_cost_components(results_df: pd.DataFrame, fixed_order_cost: float, 
+                             holding_cost_pct: float) -> Tuple[float, float]:
+    """
+    Calculate holding cost and ordering cost from results.
+    
+    Args:
+        results_df: DataFrame with Recommended_Order, AdjustedAnnualSales, COST, Safety_Stock columns
+        fixed_order_cost: Fixed cost per order
+        holding_cost_pct: Holding cost as decimal (e.g., 0.25 for 25%)
+        
+    Returns:
+        Tuple of (total_holding_cost, total_ordering_cost)
+    """
+    total_holding_cost = 0
+    total_ordering_cost = 0
+    
+    for idx, row in results_df.iterrows():
+        Q = row['Recommended_Order']
+        demand = row['AdjustedAnnualSales']
+        unit_cost = row['COST']
+        safety_stock = row.get('Safety_Stock', 0)
+        
+        if Q > 0 and demand > 0:
+            # Annual holding cost: (Cycle Stock (Q/2) + Safety Stock) * unit_holding_cost
+            h_unit = unit_cost * holding_cost_pct
+            holding_annual = ((Q / 2) + safety_stock) * h_unit
+            total_holding_cost += holding_annual
+            
+            # Ordering cost: (Annual Demand / Q) * Fixed Cost per Order
+            ordering_annual = (demand / Q) * fixed_order_cost
+            total_ordering_cost += ordering_annual
+    
+    return total_holding_cost, total_ordering_cost
+
+def calculate_current_policy_costs(input_df: pd.DataFrame, fixed_order_cost: float, holding_cost_pct: float) -> Optional[Tuple[float, float, float]]:
+    """
+    Calculate costs for the current inventory policy from input data.
+    
+    Args:
+        input_df: DataFrame with current policy data (Reorder Point, Max Level, AdjustedAnnualSales, COST)
+        fixed_order_cost: Fixed cost per order
+        holding_cost_pct: Holding cost as decimal (e.g., 0.25 for 25%)
+        
+    Returns:
+        Tuple of (total_current_cost, current_holding_cost, current_ordering_cost) or None if data missing
+    """
+    # Check for required columns
+    r_col = None
+    m_col = None
+    
+    if 'Reorder Point' in input_df.columns:
+        r_col = 'Reorder Point'
+    elif 'Reorder_Point' in input_df.columns:
+        r_col = 'Reorder_Point'
+    
+    if 'Max Level' in input_df.columns:
+        m_col = 'Max Level'
+    elif 'Max_Level' in input_df.columns:
+        m_col = 'Max_Level'
+    
+    if r_col is None or m_col is None:
+        return None
+    
+    # Check for other required columns
+    required_cols = ['AdjustedAnnualSales', 'COST']
+    if not all(col in input_df.columns for col in required_cols):
+        return None
+    
+    total_holding_cost = 0
+    total_ordering_cost = 0
+    
+    for idx, row in input_df.iterrows():
+        r_act = row[r_col] if pd.notna(row[r_col]) else 0
+        m_act = row[m_col] if pd.notna(row[m_col]) else 0
+        q_act = m_act - r_act
+        
+        # Check for valid policy
+        if q_act <= 0:
+            continue
+        
+        # Calculate holding cost: avg_inv = (R + M) / 2, then h_cost = avg_inv * unit_holding_cost
+        avg_inv_act = (r_act + m_act) / 2
+        unit_cost = row['COST']
+        h_unit = unit_cost * holding_cost_pct
+        h_cost_act = avg_inv_act * h_unit
+        
+        # Calculate ordering cost: (Annual Demand / Q) * Fixed Cost per Order
+        demand = row['AdjustedAnnualSales']
+        if q_act > 0 and demand > 0:
+            o_cost_act = (demand / q_act) * fixed_order_cost
+        else:
+            o_cost_act = 0
+        
+        total_holding_cost += h_cost_act
+        total_ordering_cost += o_cost_act
+    
+    total_current_cost = total_holding_cost + total_ordering_cost
+    return total_current_cost, total_holding_cost, total_ordering_cost
+
+def run_sensitivity_analyses(
+    df: pd.DataFrame,
+    enabled_analyses: Dict[str, Dict],
+    base_params: Dict,
+    progress_callback=None
+) -> Dict[str, pd.DataFrame]:
+    """
+    Run sensitivity analyses for enabled parameter types.
+    
+    Args:
+        df: Original input DataFrame (before prepare_optimization_data)
+        enabled_analyses: Dict with analysis type as key and parameter dict as value
+                         e.g., {'fixed_order_cost': {'low': 25, 'high': 200, 'step': 25}, ...}
+        base_params: Dict with base parameters:
+                    {'service_level': float (decimal),
+                     'fixed_order_cost': float,
+                     'storage_capacity': int,
+                     'holding_cost_pct': float (decimal)}
+        progress_callback: Optional callback function(name, progress) for progress updates
+        
+    Returns:
+        Dict of DataFrames, one per enabled analysis type
+    """
+    results = {}
+    
+    # Extract base parameters
+    base_service_level = base_params['service_level']
+    base_fixed_order_cost = base_params['fixed_order_cost']
+    base_storage_capacity = base_params['storage_capacity']
+    base_holding_cost_pct = base_params['holding_cost_pct']
+    
+    # Run Fixed Order Cost sensitivity analysis
+    if 'fixed_order_cost' in enabled_analyses:
+        if progress_callback:
+            progress_callback('fixed_order_cost', 0)
+        
+        params = enabled_analyses['fixed_order_cost']
+        s_values = np.arange(params['low'], params['high'] + params['step'], params['step'])
+        sensitivity_results = []
+        
+        # Prepare base data once (won't change for this analysis)
+        df_prep, base_opt_params = prepare_optimization_data(
+            df, base_service_level, base_fixed_order_cost, base_holding_cost_pct
+        )
+        
+        for s_value in s_values:
+            try:
+                # Recalculate C_ik with new S value
+                new_C_ik = {}
+                Q_options = base_opt_params['Q_options']
+                
+                for idx in df_prep.index:
+                    row = df_prep.loc[idx]
+                    h_unit = row['COST'] * base_holding_cost_pct
+                    safety_stock = row['Safety_Stock']
+                    
+                    for k, Q in enumerate(Q_options[idx]):
+                        # Recalculate costs with new S
+                        holding_annual = ((Q / 2) + safety_stock) * h_unit
+                        ordering_annual = (row['AdjustedAnnualSales'] / Q) * s_value if Q > 0 else 0
+                        new_C_ik[(idx, k)] = holding_annual + ordering_annual
+                
+                # Update params with new costs
+                new_params = {'Q_options': Q_options, 'C_ik': new_C_ik}
+                
+                # Run optimization
+                results_df, objective_value = run_optimization(
+                    df_prep, new_params, base_storage_capacity
+                )
+                
+                # Extract metrics (including cost components)
+                metrics = extract_metrics_from_results(
+                    results_df, objective_value, base_storage_capacity,
+                    fixed_order_cost=s_value, holding_cost_pct=base_holding_cost_pct
+                )
+                
+                sensitivity_results.append({
+                    'S_Value': s_value,
+                    **metrics
+                })
+            except Exception as e:
+                # If optimization fails, skip this value
+                continue
+        
+        if sensitivity_results:
+            results['fixed_order_cost'] = pd.DataFrame(sensitivity_results)
+        
+        if progress_callback:
+            progress_callback('fixed_order_cost', 1)
+    
+    # Run Storage Capacity sensitivity analysis
+    if 'storage_capacity' in enabled_analyses:
+        if progress_callback:
+            progress_callback('storage_capacity', 0)
+        
+        params = enabled_analyses['storage_capacity']
+        v_values = np.arange(params['low'], params['high'] + params['step'], params['step']).astype(int)
+        sensitivity_results = []
+        
+        # Prepare base data once
+        df_prep, base_opt_params = prepare_optimization_data(
+            df, base_service_level, base_fixed_order_cost, base_holding_cost_pct
+        )
+        
+        for v_max in v_values:
+            try:
+                # Run optimization with new capacity
+                results_df, objective_value = run_optimization(
+                    df_prep, base_opt_params, v_max
+                )
+                
+                # Extract metrics (including cost components)
+                metrics = extract_metrics_from_results(
+                    results_df, objective_value, v_max,
+                    fixed_order_cost=base_fixed_order_cost, holding_cost_pct=base_holding_cost_pct
+                )
+                
+                sensitivity_results.append({
+                    'V_max': v_max,
+                    'Status': 'Optimal',
+                    **metrics
+                })
+            except Exception:
+                # If optimization fails, mark as infeasible
+                sensitivity_results.append({
+                    'V_max': v_max,
+                    'Total_Cost': np.nan,
+                    'Holding_Cost': np.nan,
+                    'Ordering_Cost': np.nan,
+                    'Status': 'Infeasible',
+                    'Orders/Yr': np.nan,
+                    'Storage_%': np.nan,
+                    'Avg_Order_Size (Q)': np.nan,
+                    'Avg_Reorder_Pt (R)': np.nan,
+                    'Avg_Order_Up_To (M)': np.nan,
+                    'Avg_Days_Supply': np.nan
+                })
+        
+        if sensitivity_results:
+            results['storage_capacity'] = pd.DataFrame(sensitivity_results)
+        
+        if progress_callback:
+            progress_callback('storage_capacity', 1)
+    
+    # Run Service Level sensitivity analysis
+    if 'service_level' in enabled_analyses:
+        if progress_callback:
+            progress_callback('service_level', 0)
+        
+        params = enabled_analyses['service_level']
+        # Convert percentages to decimals
+        service_low = params['low'] / 100.0
+        service_high = params['high'] / 100.0
+        service_step = params['step'] / 100.0
+        confidence_levels = np.arange(service_low, service_high + service_step, service_step)
+        sensitivity_results = []
+        
+        for conf_level in confidence_levels:
+            try:
+                # Prepare data with new service level (this recalculates safety stock)
+                df_prep, opt_params = prepare_optimization_data(
+                    df, conf_level, base_fixed_order_cost, base_holding_cost_pct
+                )
+                
+                # Run optimization
+                results_df, objective_value = run_optimization(
+                    df_prep, opt_params, base_storage_capacity
+                )
+                
+                # Extract metrics (including cost components)
+                metrics = extract_metrics_from_results(
+                    results_df, objective_value, base_storage_capacity,
+                    fixed_order_cost=base_fixed_order_cost, holding_cost_pct=base_holding_cost_pct
+                )
+                
+                # Calculate total safety stock
+                total_ss_bottles = df_prep['Safety_Stock'].sum()
+                
+                # Calculate Z-score
+                z_score = norm.ppf(conf_level)
+                
+                sensitivity_results.append({
+                    'Confidence': conf_level * 100,  # Store as percentage for display
+                    'Z_Score': z_score,
+                    'Total_Cost': objective_value,
+                    'Holding_Cost': metrics['Holding_Cost'],
+                    'Total_SS_Bottles': total_ss_bottles
+                })
+            except Exception:
+                # If optimization fails, skip
+                continue
+        
+        if sensitivity_results:
+            results['service_level'] = pd.DataFrame(sensitivity_results)
+        
+        if progress_callback:
+            progress_callback('service_level', 1)
+    
+    # Run Holding Cost sensitivity analysis
+    if 'holding_cost_pct' in enabled_analyses:
+        if progress_callback:
+            progress_callback('holding_cost_pct', 0)
+        
+        params = enabled_analyses['holding_cost_pct']
+        # Convert percentages to decimals
+        holding_low = params['low'] / 100.0
+        holding_high = params['high'] / 100.0
+        holding_step = params['step'] / 100.0
+        holding_values = np.arange(holding_low, holding_high + holding_step, holding_step)
+        sensitivity_results = []
+        
+        for holding_cost_pct in holding_values:
+            try:
+                # Prepare data with new holding cost
+                df_prep, opt_params = prepare_optimization_data(
+                    df, base_service_level, base_fixed_order_cost, holding_cost_pct
+                )
+                
+                # Run optimization
+                results_df, objective_value = run_optimization(
+                    df_prep, opt_params, base_storage_capacity
+                )
+                
+                # Extract metrics (including cost components)
+                metrics = extract_metrics_from_results(
+                    results_df, objective_value, base_storage_capacity,
+                    fixed_order_cost=base_fixed_order_cost, holding_cost_pct=holding_cost_pct
+                )
+                
+                sensitivity_results.append({
+                    'Holding_Cost_Pct': holding_cost_pct * 100,  # Store as percentage for display
+                    **metrics
+                })
+            except Exception:
+                # If optimization fails, skip
+                continue
+        
+        if sensitivity_results:
+            results['holding_cost_pct'] = pd.DataFrame(sensitivity_results)
+        
+        if progress_callback:
+            progress_callback('holding_cost_pct', 1)
+    
+    return results
 

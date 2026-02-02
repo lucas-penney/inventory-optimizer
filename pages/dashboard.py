@@ -1,4 +1,5 @@
 import streamlit as st
+from utils.ui_components import page_title
 
 # Initialize session state variables
 if 'user_type' not in st.session_state:
@@ -63,11 +64,9 @@ st.markdown("""
 
 # Authentication Section
 if st.session_state.user_type is None:
-    st.markdown('<p class="main-title">🍷 Wine Inventory Optimizer</p>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">A quantitative approach to supply chain efficiency</p>', unsafe_allow_html=True)
-    
-    st.markdown("---")
+    page_title("Executive Summary")
     st.markdown("### Welcome")
+    st.markdown("The application was designed for a client, but can also be viewed in a demo mode.")
     st.markdown("Please select your access level to continue:")
     
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -94,7 +93,7 @@ if st.session_state.user_type is None:
                         st.session_state.authenticated = True
                         st.rerun()
                     else:
-                        st.error("❌ Incorrect password. Please try again.")
+                        st.error("Incorrect password. Please try again.")
             with col_b:
                 if st.button("Back", use_container_width=True):
                     st.session_state.user_type = None
@@ -107,19 +106,10 @@ if st.session_state.user_type is None:
 
 else:
     # Main Executive Summary Content
-    st.markdown('<p class="main-title">🍷 Wine Inventory Optimizer</p>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">A quantitative approach to supply chain efficiency</p>', unsafe_allow_html=True)
-    
-    # User type indicator
-    if st.session_state.user_type == "client":
-        st.success("✅ Logged in as **Client** - Full access enabled")
-    else:
-        st.info("👤 Viewing as **Guest** - Demo mode")
-    
-    st.markdown("---")
-    
+    page_title("Executive Summary")
+
     # Project Context Section
-    st.markdown('<p class="section-header">📋 Project Context</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-header">Project Context</p>', unsafe_allow_html=True)
     st.markdown("""
     Wine inventory management presents a complex optimization challenge balancing competing objectives. 
     Restaurants and wine bars must maintain sufficient stock to meet customer demand while avoiding the 
@@ -132,7 +122,7 @@ else:
     """)
     
     # Solution Section
-    st.markdown('<p class="section-header">⚙️ Solution</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-header">Solution</p>', unsafe_allow_html=True)
     st.markdown("""
     The Wine Inventory Optimizer transforms raw operational data into actionable inventory policies 
     through a sophisticated two-stage process. First, the **data ingestion pipeline** processes historical 
@@ -146,14 +136,14 @@ else:
     """)
     
     # Benefits Section
-    st.markdown('<p class="section-header">✨ Benefits</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-header">Benefits</p>', unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown("""
         <div class="benefit-card">
-            <div class="benefit-title">💰 Cost Savings</div>
+            <div class="benefit-title">Cost Savings</div>
             <p>Reduce total inventory costs through optimized ordering strategies. The model minimizes 
             the combined impact of holding costs and ordering costs, typically achieving 30-40% reductions 
             in total annual inventory expenses.</p>
@@ -163,7 +153,7 @@ else:
     with col2:
         st.markdown("""
         <div class="benefit-card">
-            <div class="benefit-title">📦 Space Management</div>
+            <div class="benefit-title">Space Management</div>
             <p>Maximize efficient use of limited storage capacity by intelligently allocating space to 
             high-velocity items. The optimizer considers physical constraints and prioritizes inventory 
             decisions that deliver the greatest return per bottle stored.</p>
@@ -173,7 +163,7 @@ else:
     with col3:
         st.markdown("""
         <div class="benefit-card">
-            <div class="benefit-title">🎯 Risk Reduction</div>
+            <div class="benefit-title">Risk Reduction</div>
             <p>Maintain high service levels while minimizing stockout risks through calculated safety 
             stock policies. The model balances the cost of carrying buffer inventory against the 
             probability and impact of running out of critical products.</p>
@@ -186,7 +176,7 @@ else:
     with col1:
         st.markdown("""
         <div class="benefit-card">
-            <div class="benefit-title">⏱️ Reduced Administrative Burden</div>
+            <div class="benefit-title">Reduced Administrative Burden</div>
             <p>Decrease order frequency and streamline purchasing operations by placing larger, 
             less frequent orders. This frees up valuable time for strategic activities like 
             supplier development and quality management.</p>
@@ -196,7 +186,7 @@ else:
     with col2:
         st.markdown("""
         <div class="benefit-card">
-            <div class="benefit-title">💵 Improved Cash Flow</div>
+            <div class="benefit-title">Improved Cash Flow</div>
             <p>Optimize working capital allocation by reducing excess inventory levels while 
             maintaining operational effectiveness. Better inventory policies translate directly 
             to improved cash flow and financial flexibility.</p>
@@ -205,12 +195,12 @@ else:
     
     # Future Extensions Section (Client-only)
     if st.session_state.user_type == "client":
-        st.markdown('<p class="section-header">🚀 Future Extensions</p>', unsafe_allow_html=True)
+        st.markdown('<p class="section-header">Future Extensions</p>', unsafe_allow_html=True)
         st.markdown("*Available exclusively for client partners*")
         
         st.markdown("""
         <div class="future-extension-card">
-            <div class="extension-title">🗄️ Database Migration & Scalability</div>
+            <div class="extension-title">Database Migration & Scalability</div>
             <p>Transition from CSV-based data management to a centralized PostgreSQL relational database 
             system. This migration will standardize product naming conventions across categories, eliminate 
             manual data cleaning bottlenecks, and enable seamless scaling of optimization logic to other 
@@ -221,7 +211,7 @@ else:
         
         st.markdown("""
         <div class="future-extension-card">
-            <div class="extension-title">📊 Enhanced Cost Parameter Estimation</div>
+            <div class="extension-title">Enhanced Cost Parameter Estimation</div>
             <p>Collaborate with the accounting department to develop precise estimates of holding costs 
             and administrative order costs based on actual financial data. Current estimates rely on 
             industry benchmarks and management consultation, but access to detailed cost accounting 
@@ -232,7 +222,7 @@ else:
         
         st.markdown("""
         <div class="future-extension-card">
-            <div class="extension-title">📈 Real-Time Data Integration</div>
+            <div class="extension-title">Real-Time Data Integration</div>
             <p>Integrate daily sales data feeds to enable dynamic reorder point adjustments based on 
             current demand patterns. Rather than relying solely on historical averages, the system 
             would continuously update demand forecasts and safety stock requirements. This real-time 
@@ -250,11 +240,3 @@ else:
     with col3:
         if st.button("Configure Optimization →", type="primary", use_container_width=True):
             st.switch_page("pages/solver_ui.py")
-    
-    # Logout option
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    with st.expander("🔒 Session Options"):
-        if st.button("Logout / Change User Type"):
-            st.session_state.user_type = None
-            st.session_state.authenticated = False
-            st.rerun()

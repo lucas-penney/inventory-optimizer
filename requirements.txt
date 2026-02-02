@@ -4,3 +4,6 @@ pulp
 scipy
 numpy
 plotly
+matplotlib
+networkx
+openpyxl

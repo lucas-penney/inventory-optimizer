@@ -1,10 +1,15 @@
 import streamlit as st
 import pandas as pd
+from io import BytesIO
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from src.solver_logic import calculate_cost_components, calculate_current_policy_costs
+from utils.ui_components import page_title
 
-st.title("Optimization Results")
+page_title("Optimization Results")
+
+# KPI styling: borders around metric cards (minimal CSS)
+st.markdown("""<style>div[data-testid="stMetric"]{border:1px solid #cbd5e1;border-radius:8px;padding:1rem;}</style>""", unsafe_allow_html=True)
 
 # Check if optimization results exist
 if 'optimization_results' not in st.session_state or st.session_state.optimization_results is None:
@@ -111,6 +116,97 @@ else:
                     help="Percentage of storage capacity utilized by optimized inventory levels"
                 )
         
+        # View Optimized Inventory Policy expander
+        r_col = 'Reorder Point' if 'Reorder Point' in results_df.columns else ('Reorder_Point' if 'Reorder_Point' in results_df.columns else None)
+        m_col = 'Max Level' if 'Max Level' in results_df.columns else ('Max_Level' if 'Max_Level' in results_df.columns else None)
+        orig_df = results_df
+        if r_col is None or m_col is None:
+            for src in [st.session_state.get('original_input_data'), st.session_state.get('input_data')]:
+                if src is not None:
+                    ro = 'Reorder Point' if 'Reorder Point' in src.columns else ('Reorder_Point' if 'Reorder_Point' in src.columns else None)
+                    mo = 'Max Level' if 'Max Level' in src.columns else ('Max_Level' if 'Max_Level' in src.columns else None)
+                    if ro is not None or mo is not None:
+                        orig_df = src
+                        r_col, m_col = ro, mo
+                        break
+        product_col = results_df['PRODUCT'] if 'PRODUCT' in results_df.columns else results_df.index.astype(str)
+        opt_r = results_df['Reorder_Point_R'].astype('Int64')
+        opt_m = results_df['Order_Up_To_M'].astype('Int64')
+        orig_r = orig_df[r_col] if r_col and r_col in orig_df.columns else pd.Series([pd.NA] * len(results_df), index=results_df.index)
+        orig_m = orig_df[m_col] if m_col and m_col in orig_df.columns else pd.Series([pd.NA] * len(results_df), index=results_df.index)
+        if not orig_r.index.equals(results_df.index):
+            orig_r = orig_r.reindex(results_df.index)
+            orig_m = orig_m.reindex(results_df.index)
+        change_r = opt_r.astype(float) - orig_r.astype(float)
+        change_m = opt_m.astype(float) - orig_m.astype(float)
+        annual_savings_list = []
+        for idx in results_df.index:
+            row = results_df.loc[idx]
+            orig_r_val = orig_r.loc[idx]
+            orig_m_val = orig_m.loc[idx]
+            if pd.isna(orig_r_val) or pd.isna(orig_m_val):
+                annual_savings_list.append(pd.NA)
+                continue
+            q_act = float(orig_m_val) - float(orig_r_val)
+            if q_act <= 0:
+                annual_savings_list.append(pd.NA)
+                continue
+            demand = row['AdjustedAnnualSales']
+            unit_cost = row['COST']
+            if demand <= 0:
+                annual_savings_list.append(pd.NA)
+                continue
+            r_act, m_act = float(orig_r_val), float(orig_m_val)
+            avg_inv_act = (r_act + m_act) / 2
+            current_h_cost = avg_inv_act * (unit_cost * holding_cost_pct)
+            current_o_cost = (demand / q_act) * fixed_order_cost
+            Q_opt = row['Recommended_Order']
+            if Q_opt <= 0:
+                annual_savings_list.append(pd.NA)
+                continue
+            opt_h_cost = ((Q_opt / 2) + row.get('Safety_Stock', 0)) * (unit_cost * holding_cost_pct)
+            opt_o_cost = (demand / Q_opt) * fixed_order_cost
+            savings = (current_h_cost + current_o_cost) - (opt_h_cost + opt_o_cost)
+            annual_savings_list.append(savings)
+        annual_savings = pd.Series(annual_savings_list, index=results_df.index)
+        policy_df = pd.DataFrame({
+            'Product': product_col.values,
+            'Optimized Reorder Point': opt_r.values,
+            'Original Reorder Point': orig_r.values,
+            'Change in Reorder Point': change_r.values,
+            'Optimized Max Level': opt_m.values,
+            'Original Max Level': orig_m.values,
+            'Change in Max Level': change_m.values,
+            'Annual Savings': annual_savings.values,
+        })
+        policy_df['Original Reorder Point'] = policy_df['Original Reorder Point'].apply(
+            lambda x: '—' if pd.isna(x) else int(x)
+        )
+        policy_df['Change in Reorder Point'] = policy_df['Change in Reorder Point'].apply(
+            lambda x: '—' if pd.isna(x) else int(round(x))
+        )
+        policy_df['Original Max Level'] = policy_df['Original Max Level'].apply(
+            lambda x: '—' if pd.isna(x) else int(x)
+        )
+        policy_df['Change in Max Level'] = policy_df['Change in Max Level'].apply(
+            lambda x: '—' if pd.isna(x) else int(round(x))
+        )
+        policy_df['Annual Savings'] = policy_df['Annual Savings'].apply(
+            lambda x: '—' if pd.isna(x) else f"${x:,.2f}"
+        )
+        with st.expander("View Optimized Inventory Policy", expanded=False):
+            buf = BytesIO()
+            policy_df.to_excel(buf, index=False, engine='openpyxl')
+            buf.seek(0)
+            st.download_button(
+                "Download inventory policy as Excel",
+                data=buf,
+                file_name="inventory_policy.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_policy_excel",
+            )
+            st.dataframe(policy_df, use_container_width=True, hide_index=True)
+        
         # Comparative Visualizations Section
         if show_comparison_kpis:
             st.divider()
@@ -128,7 +224,7 @@ else:
             fig_costs.add_trace(go.Bar(
                 x=categories,
                 y=current_vals,
-                name='Current (Skyline)',
+                name='Current',
                 marker_color='#d9534f', # Reddish
                 text=[f"${v:,.0f}" for v in current_vals],
                 textposition='auto',

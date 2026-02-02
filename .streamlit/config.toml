@@ -1,0 +1,7 @@
+[theme]
+base = "light"
+# Primary accent colour for buttons and interactive elements (blue)
+primaryColor = "#1f77b4"
+
+[theme.light]
+primaryColor = "#1f77b4"

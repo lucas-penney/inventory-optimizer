@@ -2,100 +2,95 @@ import streamlit as st
 import pandas as pd
 import os
 from src.solver_logic import validate_data_schema, prepare_optimization_data, run_optimization, run_sensitivity_analyses
+from utils.ui_components import page_title
 
-# Page Title
-st.title("Wine Inventory Optimizer")
+page_title("Configure Optimization")
+
+# User type from dashboard (client or guest); default to guest if not set
+user_type = st.session_state.get('user_type', 'guest')
 
 # Initialize session state for data source if not exists
 if 'data_source' not in st.session_state:
-    st.session_state.data_source = 'dummy'
+    st.session_state.data_source = 'client' if user_type == 'client' else 'dummy'
 
 # Initialize session state for parameters
 if 'holding_cost_pct' not in st.session_state:
     st.session_state.holding_cost_pct = 25.0
 if 'fixed_order_cost' not in st.session_state:
     st.session_state.fixed_order_cost = 50.0
+# Default storage capacity: from secrets in client mode, 2000 in demo (guest) mode
+_client_cap = 2000
+try:
+    _client_cap = int(st.secrets.get("client", {}).get("storage_capacity", 2000))
+except (TypeError, ValueError):
+    pass
 if 'storage_capacity' not in st.session_state:
-    st.session_state.storage_capacity = 2000
+    st.session_state.storage_capacity = _client_cap if user_type == 'client' else 2000
 if 'service_level' not in st.session_state:
     st.session_state.service_level = 95.0
 
-# Data Source Toggle
-st.divider()
-st.subheader("Data Source")
-data_source = st.toggle(
-    "Use Client Data",
-    value=(st.session_state.data_source == 'client'),
-    key='data_toggle'
-)
+# Data Source section: only show when user has signed on (client or guest from dashboard)
+if user_type in ('client', 'guest'):
+    st.subheader("Data Source")
 
-if data_source:
-    st.session_state.data_source = 'client'
-    # Upload Data button
-    uploaded_file = st.file_uploader(
-        "Upload Data",
-        type=['csv'],
-        key='data_upload'
-    )
-    
-    # Process uploaded file immediately
-    if uploaded_file is not None:
-        try:
-            # Read CSV into DataFrame
-            df = pd.read_csv(uploaded_file)
-            
-            # Validate the data schema
-            is_valid, errors = validate_data_schema(df)
-            
-            if is_valid:
-                # Store validated data in session state
-                st.session_state.input_data = df
-                st.success(f"Data uploaded and validated successfully.")
-            else:
-                # Display all validation errors
-                st.error("Data validation failed. Please fix the following issues:")
-                for error in errors:
-                    st.error(f"  • {error}")
-                # Clear any previously stored data
+    if user_type == 'client':
+        st.session_state.data_source = 'client'
+        uploaded_file = st.file_uploader(
+            "Upload Data",
+            type=['csv'],
+            key='data_upload'
+        )
+
+        if uploaded_file is not None:
+            try:
+                df = pd.read_csv(uploaded_file)
+                is_valid, errors = validate_data_schema(df)
+                if is_valid:
+                    st.session_state.input_data = df
+                    st.success("Data uploaded and validated successfully.")
+                else:
+                    st.error("Data validation failed. Please fix the following issues:")
+                    for error in errors:
+                        st.error(f"  • {error}")
+                    if 'input_data' in st.session_state:
+                        del st.session_state.input_data
+            except Exception as e:
+                st.error(f"Error reading CSV file: {str(e)}")
                 if 'input_data' in st.session_state:
                     del st.session_state.input_data
-        except Exception as e:
-            st.error(f"Error reading CSV file: {str(e)}")
-            if 'input_data' in st.session_state:
-                del st.session_state.input_data
-    else:
-        # No file uploaded, clear input_data if it exists
-        if 'input_data' in st.session_state:
-            del st.session_state.input_data
-else:
-    st.session_state.data_source = 'dummy'
-    # Load dummy data
-    try:
-        dummy_data_path = os.path.join('data', 'dummy_data.csv')
-        if os.path.exists(dummy_data_path):
-            df_dummy = pd.read_csv(dummy_data_path)
-            st.session_state.input_data = df_dummy
         else:
             if 'input_data' in st.session_state:
                 del st.session_state.input_data
-    except Exception as e:
-        st.error(f"Error loading anonymized data: {str(e)}")
-        if 'input_data' in st.session_state:
-            del st.session_state.input_data
+
+    else:
+        # Guest: anonymized dataset description and load dummy data
+        st.session_state.data_source = 'dummy'
+        st.caption("With guest access, an anonymized dataset will be used for optimization")
+        try:
+            dummy_data_path = os.path.join('data', 'dummy_data.csv')
+            if os.path.exists(dummy_data_path):
+                df_dummy = pd.read_csv(dummy_data_path)
+                st.session_state.input_data = df_dummy
+            else:
+                if 'input_data' in st.session_state:
+                    del st.session_state.input_data
+        except Exception as e:
+            st.error(f"Error loading anonymized data: {str(e)}")
+            if 'input_data' in st.session_state:
+                del st.session_state.input_data
 
 # Optimization Parameters Section
 st.divider()
 st.subheader("Optimization Parameters")
 
-# Define default storage capacity based on data source (only set if not previously set by user)
+# Default storage capacity: from secrets in Client mode, 2000 in demo (guest) mode
+default_storage = _client_cap if user_type == 'client' else 2000
 if 'storage_capacity_initialized' not in st.session_state:
-    default_storage = 1932 if st.session_state.data_source == 'client' else 2000
     st.session_state.storage_capacity = default_storage
     st.session_state.storage_capacity_initialized = True
 else:
-    # Update default only if user hasn't customized it and source changed
-    default_storage = 1932 if st.session_state.data_source == 'client' else 2000
-    if st.session_state.storage_capacity in [1932, 2000]:
+    # Update default only if user hasn't customized it and mode changed
+    if st.session_state.storage_capacity in [_client_cap, 2000]:
         st.session_state.storage_capacity = default_storage
 
 # Holding Cost Percentage
@@ -446,7 +441,7 @@ with col3:
     if st.button("Run Optimization →", type="primary", key='run_optimization', use_container_width=True):
         # Check if input data is available
         if 'input_data' not in st.session_state or st.session_state.input_data is None:
-            st.error("No data available. Please upload a valid CSV file or toggle off 'Use Client Data'.")
+            st.error("No data available. Please upload a valid CSV file (as a client) or ensure anonymized data has loaded.")
         else:
             try:
                 # Store parameters in session state for the optimization run
