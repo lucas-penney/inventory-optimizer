@@ -5,8 +5,81 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-# Navy blue for consistent page titles (matches Streamlit title styling)
-PAGE_TITLE_COLOR = "#000080"
+def get_shared_page_styles() -> str:
+    """Return shared CSS for dashboard and methodology pages."""
+    return """
+    <style>
+    .main-title {
+        font-size: 3rem;
+        font-weight: 700;
+        color: #1e7b34;
+        text-align: center;
+        margin-bottom: 0.5rem;
+    }
+    .subtitle {
+        font-size: 1.3rem;
+        color: #2c5aa0;
+        text-align: center;
+        margin-bottom: 3rem;
+        font-style: italic;
+    }
+    .section-header {
+        font-size: 1.8rem;
+        font-weight: 600;
+        color: #1e7b34;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        border-bottom: 2px solid #2c5aa0;
+        padding-bottom: 0.5rem;
+    }
+    .benefit-card {
+        background-color: #f0f8ff;
+        border-left: 4px solid #2c5aa0;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        border-radius: 5px;
+    }
+    .benefit-title {
+        font-size: 1.3rem;
+        font-weight: 600;
+        color: #1e7b34;
+        margin-bottom: 0.5rem;
+    }
+    .future-extension-card {
+        background-color: #e8f5e9;
+        border-left: 4px solid #1e7b34;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        border-radius: 5px;
+    }
+    .extension-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #2c5aa0;
+        margin-bottom: 0.5rem;
+    }
+    .methodology-card {
+        background-color: #f0f8ff;
+        border-left: 4px solid #2c5aa0;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        border-radius: 5px;
+    }
+    .methodology-title {
+        font-size: 1.3rem;
+        font-weight: 600;
+        color: #1e7b34;
+        margin-bottom: 0.5rem;
+    }
+    .info-box {
+        background-color: #e8f5e9;
+        border-left: 4px solid #1e7b34;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        border-radius: 5px;
+    }
+    </style>
+"""
 
 
 def page_title(title: str) -> None:
@@ -16,7 +89,7 @@ def page_title(title: str) -> None:
         st.title(title)
     with col_btn:
         if st.session_state.get("user_type") is not None:
-            if st.button("Logout", use_container_width=True):
+            if st.button("Logout", width='stretch'):
                 st.session_state.user_type = None
                 st.session_state.authenticated = False
                 st.switch_page("pages/dashboard.py")

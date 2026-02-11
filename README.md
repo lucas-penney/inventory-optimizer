@@ -1,159 +1,161 @@
 # Wine Inventory Optimizer
 
-## Project Description
+**Reduced wine inventory costs by 30-40% for a hospitality/tourism business using mixed-integer optimization.**
 
-**Objective/Goal**:
-- To optimize wine inventory reorder policies using Mixed-Integer Linear Programming (MILP), minimizing total inventory costs while respecting storage capacity and supplier constraints.
+Built for a major tourism company that operates restaurants, this tool replaces gut-feel ordering with data-driven reorder policies — balancing the cost of holding inventory against the cost of placing orders, all within real-world storage and supplier constraints.
 
-**Sector**:
-- Hospitality, Food & Beverage, Supply Chain Management
+<p align="center">
+  <img src="images/kpi_results.png" alt="App Screenshot" width="70%" />
+</p>
 
-**Technologies Used**:
-- **Python**: Primary programming language for data processing and optimization logic.
-- **Streamlit**: Interactive web application framework for the user interface and data visualization.
-- **PuLP**: Open-source linear programming library used to formulate and solve the MILP optimization problem.
-- **Pandas & NumPy**: Data manipulation and numerical calculations for demand analysis and cost modeling.
-- **SciPy**: Statistical functions for safety stock calculations using normal distribution quantiles.
-- **Plotly & Matplotlib**: Data visualization for results dashboards and sensitivity analysis charts.
+> **Try it live:** [wine-inventory-optimizer.streamlit.app](https://wine-inventory-optimizer.streamlit.app)
+---
 
-## Architecture & Data Flow
+## Key Results
 
-**Architecture Overview**:
+- **30-40% reduction (~$9000)** in total annual inventory costs compared to the current ordering policy
+- **$7/bottle** is the value of additional storage space, which plateaus around 2500 bottles
+- **95% service level** maintained and 99.9% service level can be achieved with minimal extra cost
+- **100% space utilization** to maximize the value per unit of storage space
 
-<!-- PLACEHOLDER: Process Flowchart -->
-![Process Flowchart](./docs/images/process_flowchart.png)
-*Add a flowchart showing the end-to-end process from data ingestion through optimization to results output.*
+---
 
-**Data Sources**:
-- Historical sales data (11 months of monthly sales by wine SKU)
-- Product cost and supplier lead time information
-- Supplier type and winery designations (Wholesaler vs Direct)
-- Business rules (anchor wines, by-the-bottle ordering capability)
+## Why I Built This
 
-**Transformation Steps**:
-1. **Data Ingestion**: Raw Excel/CSV files are processed through the ETL pipeline to standardize naming conventions and merge datasets.
-2. **Demand Analysis**: Monthly sales data is transformed into demand-during-lead-time (DDLT) statistics, calculating mean and standard deviation for each wine.
-3. **Safety Stock Calculation**: Using the target service level (e.g., 95%), safety stock is computed as Z × σ_LT for each SKU.
-4. **Order Menu Generation**: Valid order quantity options are generated for each wine based on MOQ rules, case sizes, and EOQ calculations.
-5. **Cost Pre-Calculation**: Total annual costs (holding + ordering) are pre-computed for each wine-option combination to linearize the objective function.
-6. **MILP Optimization**: The PuLP solver determines optimal reorder points (R), order-up-to levels (M), and order quantities (Q) that minimize total cost subject to constraints.
+This project started as a project for a graduate Decision Analytics class at McGill University, which was extended following course completion. I consulted with a former employer in the hospitality and tourism sector, who I knew had a keen interest in data and optimization. Their ordering process relied on experience and intuition, which resulted in frequent purchase orders and bloated administrative costs. I saw an opportunity to apply operations research techniques to a tangible, everyday business problem — and to build a tool the business could actually use, not just a report that sits on a shelf.
 
-**Output**:
-- Recommended order quantities for each wine SKU
-- Optimal reorder points and order-up-to levels
-- Total cost savings compared to current policy
-- Sensitivity analysis across key parameters
+---
 
-## Application Screenshots
+## How It Works
 
-### Executive Summary Dashboard
-<!-- PLACEHOLDER: Executive Summary Screenshot -->
-![Executive Summary](./docs/images/executive_summary.png)
-*The landing page provides project context, solution overview, and key benefits of the optimization approach.*
+The optimizer follows a straightforward pipeline:
 
-### Inventory Optimizer Configuration
-<!-- PLACEHOLDER: Solver UI Screenshot -->
-![Optimizer Configuration](./docs/images/solver_ui.png)
-*Users configure optimization parameters including service level, holding cost percentage, fixed order cost, and storage capacity.*
+1. **Ingest** historical sales data, product costs, supplier lead times, and business rules
+2. **Analyze** demand patterns to calculate how much safety stock each wine needs
+3. **Generate** valid ordering options for each wine (respecting case sizes, supplier minimums, and by-the-bottle rules)
+4. **Optimize** using a Mixed-Integer Linear Program (MILP) that finds the lowest-cost combination of reorder points and order quantities across the entire portfolio
+5. **Visualize** results with interactive dashboards, cost comparisons, and sensitivity analysis
+---
 
-### Optimization Results
-<!-- PLACEHOLDER: Results Screenshot -->
-![Optimization Results](./docs/images/results.png)
-*Results display recommended policies for each wine, cost breakdowns, and comparison with current inventory policies.*
+## App Walkthrough
+
+### Executive Summary
+
+The landing page provides project context, explains the business problem, and outlines the benefits of the optimization approach. Users can access the app as a guest (with anonymized demo data) or as the client (with real data).
+
+<p align="center">
+  <img src="images/executive_summary.png" alt="Executive Summary" width="70%" />
+</p>
+
+### Configure Optimization
+
+Users set four key parameters before running the optimizer:
+- **Holding Cost %** — how expensive it is to keep inventory on the shelf
+- **Fixed Order Cost** — the administrative cost each time an order is placed
+- **Service Level** — how much stockout risk is acceptable
+- **Storage Capacity** — the physical limit on how many bottles can be stored
+
+Optional sensitivity analysis can be enabled to explore how results change as these parameters vary.
+
+<p align="center">
+  <img src="images/scenario_config.png" alt="Configure Optimization" width="45%" />
+  <img src="images/sensitivity_analysis.png" alt="Enable Sensitivity" width="45%" />
+</p>
+
+
+
+
+### Results Dashboard
+
+After running the optimizer, the results page displays:
+- **KPI cards** — total annual cost, dollar savings, percentage cost reduction, and space utilization
+- **Cost comparison chart** — current policy vs. optimized policy (holding cost, ordering cost, total cost)
+- **Order frequency analysis** — showing how the top cost-saving wines reduce their ordering frequency
+- **Downloadable inventory policy** — an Excel file with optimized reorder points and order-up-to levels for every wine
+
+<p align="center">
+  <img src="images/results.png" alt="Results Dashboard" width="70%" />
+</p>
 
 ### Sensitivity Analysis
-<!-- PLACEHOLDER: Sensitivity Analysis Screenshot -->
-![Sensitivity Analysis](./docs/images/sensitivity_analysis.png)
-*Interactive charts show how optimal costs change across different parameter values.*
+
+Interactive charts reveal how optimal costs shift when assumptions change. For example:
+- How does total cost change as storage capacity increases? (And at what point does adding more space stop helping?)
+- What happens to the holding vs. ordering cost trade-off as fixed order costs rise?
+- How much extra safety stock does a 99% service level require compared to 90%?
+
+<p align="center">
+  <img src="images/sensitivity_results.png" alt="Sensitivity Analysis" width="70%" />
+</p>
 
 ### Methodology & Pipeline
-<!-- PLACEHOLDER: Methodology Screenshot -->
-![Methodology](./docs/images/methodology.png)
-*Technical documentation of the mathematical model, constraints, and business logic.*
 
-## Mathematical Model
+Full technical documentation is built into the app itself — including the ETL pipeline flowchart, the complete MILP formulation, business rules (winery minimums, anchor wine logic), and parameter explanations.
 
-The optimization problem is formulated as a Mixed-Integer Linear Program (MILP) using a continuous review (R, M) inventory policy:
+<p align="center">
+  <img src="images/etl_pipeline.png" alt="ETL Pipeline" width="49%" />
+  <img src="images/math_model.png" alt="Math Model" width="49%" />
+</p>
 
-**Objective Function**:
-```
-Minimize Z = Σ Σ C_ik × y_ik
-```
-Where C_ik represents the total annual cost (holding + ordering) for wine i under option k.
+---
 
-**Key Constraints**:
-- **Single Choice**: Exactly one order quantity option selected per wine
-- **Linking Constraint**: M_i - R_i = Q (order quantity equals gap between levels)
-- **Safety Stock**: R_i ≥ SS_i + μ_LT,i (reorder point covers expected demand plus buffer)
-- **Storage Capacity**: Σ M_i ≤ V_max (total max inventory within capacity)
-- **Winery MOQs**: Big-M formulation ensures minimum 60-bottle orders from direct wineries
+## Tech Stack
+
+| Technology | Role |
+|---|---|
+| **Python** | Data processing and optimization |
+| **Streamlit** | Web UI |
+| **PuLP (CBC)** | MILP solver |
+| **Pandas & NumPy** | Data and numerics |
+| **SciPy** | Safety-stock statistics |
+| **Plotly & Matplotlib** | Charts and visualizations |
+
+---
 
 ## Getting Started
 
 ### Prerequisites
 - Python 3.8+
-- pip package manager
+- pip
 
 ### Installation
 
-1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/inventory_optimizer.git
-cd inventory_optimizer
-```
-
-2. Install dependencies:
-```bash
+git clone https://github.com/lucas-penney/inventory-optimizer.git
+cd inventory-optimizer
 pip install -r requirements.txt
 ```
 
-3. Run the Streamlit application:
+### Run the App
+
 ```bash
 streamlit run app.py
 ```
 
-### Project Structure
+The app loads anonymized demo data by default — no setup required to explore the full optimization workflow.
+
+---
+
+## Project Structure
+
 ```
 inventory_optimizer/
-├── app.py                 # Main Streamlit application entry point
-├── requirements.txt       # Python dependencies
+├── app.py                  # Streamlit entry point and navigation
+├── requirements.txt        # Python dependencies
 ├── pages/
-│   ├── dashboard.py       # Executive summary and landing page
-│   ├── solver_ui.py       # Optimization configuration interface
-│   ├── results.py         # Results visualization and analysis
-│   └── methodology.py     # Technical documentation
+│   ├── dashboard.py        # Executive summary and access control
+│   ├── solver_ui.py        # Parameter configuration and optimization runner
+│   ├── results.py          # Results visualization and comparative analysis
+│   └── methodology.py      # Technical documentation
 ├── src/
-│   └── solver_logic.py    # Core optimization logic and MILP solver
+│   └── solver_logic.py     # MILP formulation, data prep, and sensitivity
 ├── scripts/
-│   └── anonymizer.py      # Data anonymization utilities
+│   └── anonymizer.py       # Data anonymization for demo dataset
 ├── utils/
-│   └── ui_components.py   # Reusable UI components
-└── data/
-    └── dummy_data.csv     # Sample anonymized dataset for demo
+│   └── ui_components.py    # Reusable UI components and flowchart builder
+├── data/
+│   └── dummy_data.csv      # Anonymized demo dataset (~80 wines)
+└── images/                 # App and README assets
 ```
 
-## Results
-
-This project demonstrates a quantitative approach to inventory optimization that:
-- **Reduces total inventory costs** by 30-40% through optimized ordering strategies
-- **Balances holding and ordering costs** using Economic Order Quantity (EOQ) principles
-- **Respects operational constraints** including storage capacity and supplier MOQs
-- **Provides sensitivity insights** to understand the impact of parameter changes
-
-The MILP formulation handles the discrete nature of wine ordering (case quantities, winery minimums) while efficiently finding optimal solutions for portfolios of 60-100+ wines.
-
-## Learnings
-
-Through this project, key learnings were achieved in:
-- Formulating real-world inventory problems as Mixed-Integer Linear Programs
-- Implementing (R, M) continuous review policies with safety stock considerations
-- Applying Big-M formulations to handle conditional constraints (winery MOQs)
-- Building interactive data applications with Streamlit for operations research tools
-- Balancing model complexity with practical solver performance using PuLP/CBC
-
-## Future Extensions
-
-- **Database Integration**: Migrate from CSV to PostgreSQL for scalable data management
-- **Real-Time Data Feeds**: Integrate daily sales data for dynamic policy adjustments
-- **Multi-Period Planning**: Extend to seasonal demand modeling and rolling horizon optimization
-- **Quantity Discounts**: Incorporate tiered pricing structures from suppliers
+---

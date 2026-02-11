@@ -1,8 +1,17 @@
+import os
+import sys
 import pandas as pd
 import numpy as np
 
+# Reproducible anonymization
+np.random.seed(42)
+
 # Load cleaned data
-df = pd.read_csv('data/client_clean_data.csv')
+INPUT_PATH = "data/client_clean_data.csv"
+if not os.path.exists(INPUT_PATH):
+    print("Error: input file not found:", INPUT_PATH, file=sys.stderr)
+    sys.exit(1)
+df = pd.read_csv(INPUT_PATH)
 
 # Anonymize Product Names
 df['PRODUCT'] = [f"Wine_SKU_{i+1:03d}" for i in range(len(df))]

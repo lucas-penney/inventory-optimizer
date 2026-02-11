@@ -264,10 +264,14 @@ def run_optimization(df: pd.DataFrame, params: dict, v_max: int) -> Tuple[pd.Dat
     C_ik = params['C_ik']
     wine_indices = df.index.tolist()
 
+    if len(wine_indices) == 0:
+        raise ValueError("No data to optimize.")
+
     # Ensure index is unique before starting optimization
     if not df.index.is_unique:
         df = df.reset_index(drop=True)
-   
+        wine_indices = df.index.tolist()
+
     # Identify unique direct wineries for Constraint 5
     direct_wineries = df[df['Wholesale vs Direct'] == 'Direct']['Winery'].unique().tolist()
 
@@ -313,7 +317,7 @@ def run_optimization(df: pd.DataFrame, params: dict, v_max: int) -> Tuple[pd.Dat
 
     # Constraint 5: Winery MOQs (Big M Formulation)
     # If a winery is used (z[w] = 1), total order quantity from that winery >= 60
-    # If not used (z[w] = 0), total order quantity = 0F
+    # If not used (z[w] = 0), total order quantity = 0
     for w_idx, winery_code in enumerate(direct_wineries):
         # Filter for wines belonging to this winery
         winery_indices = df[(df['Winery'] == winery_code) & 
@@ -337,6 +341,11 @@ def run_optimization(df: pd.DataFrame, params: dict, v_max: int) -> Tuple[pd.Dat
 
     # 6. Solve
     prob.solve(pulp.PULP_CBC_CMD(msg=0))
+
+    if prob.status != pulp.LpStatusOptimal:
+        raise ValueError(
+            "Optimization failed: problem is infeasible or could not be solved."
+        )
 
     # 7. Extract Objective Value
     objective_value = pulp.value(prob.objective)
@@ -462,6 +471,17 @@ def calculate_cost_components(results_df: pd.DataFrame, fixed_order_cost: float,
     
     return total_holding_cost, total_ordering_cost
 
+
+def get_reorder_max_columns(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Resolve reorder point and max level column names (handles 'Reorder Point'/'Reorder_Point' and 'Max Level'/'Max_Level').
+    Returns (r_col, m_col); either may be None if not found.
+    """
+    r_col = 'Reorder Point' if 'Reorder Point' in df.columns else ('Reorder_Point' if 'Reorder_Point' in df.columns else None)
+    m_col = 'Max Level' if 'Max Level' in df.columns else ('Max_Level' if 'Max_Level' in df.columns else None)
+    return r_col, m_col
+
+
 def calculate_current_policy_costs(input_df: pd.DataFrame, fixed_order_cost: float, holding_cost_pct: float) -> Optional[Tuple[float, float, float]]:
     """
     Calculate costs for the current inventory policy from input data.
@@ -474,20 +494,7 @@ def calculate_current_policy_costs(input_df: pd.DataFrame, fixed_order_cost: flo
     Returns:
         Tuple of (total_current_cost, current_holding_cost, current_ordering_cost) or None if data missing
     """
-    # Check for required columns
-    r_col = None
-    m_col = None
-    
-    if 'Reorder Point' in input_df.columns:
-        r_col = 'Reorder Point'
-    elif 'Reorder_Point' in input_df.columns:
-        r_col = 'Reorder_Point'
-    
-    if 'Max Level' in input_df.columns:
-        m_col = 'Max Level'
-    elif 'Max_Level' in input_df.columns:
-        m_col = 'Max_Level'
-    
+    r_col, m_col = get_reorder_max_columns(input_df)
     if r_col is None or m_col is None:
         return None
     
@@ -550,6 +557,11 @@ def run_sensitivity_analyses(
     Returns:
         Dict of DataFrames, one per enabled analysis type
     """
+    def _sensitivity_range(low: float, high: float, step: float):
+        """Return 1D array from low to high (inclusive) in steps of step, robust to float rounding."""
+        num = max(1, int(np.round((high - low) / step)) + 1)
+        return np.linspace(low, high, num=num)
+
     results = {}
     
     # Extract base parameters
@@ -564,7 +576,7 @@ def run_sensitivity_analyses(
             progress_callback('fixed_order_cost', 0)
         
         params = enabled_analyses['fixed_order_cost']
-        s_values = np.arange(params['low'], params['high'] + params['step'], params['step'])
+        s_values = _sensitivity_range(params['low'], params['high'], params['step'])
         sensitivity_results = []
         
         # Prepare base data once (won't change for this analysis)
@@ -623,7 +635,7 @@ def run_sensitivity_analyses(
             progress_callback('storage_capacity', 0)
         
         params = enabled_analyses['storage_capacity']
-        v_values = np.arange(params['low'], params['high'] + params['step'], params['step']).astype(int)
+        v_values = _sensitivity_range(params['low'], params['high'], params['step']).astype(int)
         sensitivity_results = []
         
         # Prepare base data once
@@ -681,7 +693,7 @@ def run_sensitivity_analyses(
         service_low = params['low'] / 100.0
         service_high = params['high'] / 100.0
         service_step = params['step'] / 100.0
-        confidence_levels = np.arange(service_low, service_high + service_step, service_step)
+        confidence_levels = _sensitivity_range(service_low, service_high, service_step)
         sensitivity_results = []
         
         for conf_level in confidence_levels:
@@ -735,7 +747,7 @@ def run_sensitivity_analyses(
         holding_low = params['low'] / 100.0
         holding_high = params['high'] / 100.0
         holding_step = params['step'] / 100.0
-        holding_values = np.arange(holding_low, holding_high + holding_step, holding_step)
+        holding_values = _sensitivity_range(holding_low, holding_high, holding_step)
         sensitivity_results = []
         
         for holding_cost_pct in holding_values:

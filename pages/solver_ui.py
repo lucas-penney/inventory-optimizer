@@ -4,6 +4,27 @@ import os
 from src.solver_logic import validate_data_schema, prepare_optimization_data, run_optimization, run_sensitivity_analyses
 from utils.ui_components import page_title
 
+
+def _render_sensitivity_range(section_label, low_label, high_label, step_label, low_key, high_key, step_key,
+                              default_low, default_high, default_step, low_min, step_min):
+    """Render three number inputs for a sensitivity range; returns (low, high, step)."""
+    st.markdown(f"**{section_label}**")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        low = st.number_input(low_label, min_value=low_min, value=default_low, step=step_min, key=low_key,
+                              help="Low end of range (must be > 0)")
+    with col2:
+        min_high = low + step_min if isinstance(low, (int, float)) else low_min + step_min
+        high = st.number_input(high_label, min_value=min_high, value=max(default_high, min_high), step=step_min,
+                               key=high_key, help="High end of range (must be > low end)")
+        if high <= low:
+            st.error("High end must be greater than low end")
+    with col3:
+        step = st.number_input(step_label, min_value=step_min, value=default_step, step=step_min, key=step_key,
+                               help="Increment between values")
+    return low, high, step
+
+
 page_title("Configure Optimization")
 
 # User type from dashboard (client or guest); default to guest if not set
@@ -18,79 +39,78 @@ if 'holding_cost_pct' not in st.session_state:
     st.session_state.holding_cost_pct = 25.0
 if 'fixed_order_cost' not in st.session_state:
     st.session_state.fixed_order_cost = 50.0
-# Default storage capacity: from secrets in client mode, 2000 in demo (guest) mode
-_client_cap = 2000
+# Default storage capacity
+client_storage_cap = 2000
 try:
-    _client_cap = int(st.secrets.get("client", {}).get("storage_capacity", 2000))
+    client_storage_cap = int(st.secrets.get("client", {}).get("storage_capacity", 2000))
 except (TypeError, ValueError):
     pass
 if 'storage_capacity' not in st.session_state:
-    st.session_state.storage_capacity = _client_cap if user_type == 'client' else 2000
+    st.session_state.storage_capacity = client_storage_cap if user_type == 'client' else 2000
 if 'service_level' not in st.session_state:
     st.session_state.service_level = 95.0
 
-# Data Source section: only show when user has signed on (client or guest from dashboard)
-if user_type in ('client', 'guest'):
+# Data Source section: only show for client users
+if user_type == 'client':
     st.subheader("Data Source")
 
-    if user_type == 'client':
-        st.session_state.data_source = 'client'
-        uploaded_file = st.file_uploader(
-            "Upload Data",
-            type=['csv'],
-            key='data_upload'
-        )
+    st.session_state.data_source = 'client'
+    uploaded_file = st.file_uploader(
+        "Upload Data",
+        type=['csv'],
+        key='data_upload'
+    )
 
-        if uploaded_file is not None:
-            try:
-                df = pd.read_csv(uploaded_file)
-                is_valid, errors = validate_data_schema(df)
-                if is_valid:
-                    st.session_state.input_data = df
-                    st.success("Data uploaded and validated successfully.")
-                else:
-                    st.error("Data validation failed. Please fix the following issues:")
-                    for error in errors:
-                        st.error(f"  • {error}")
-                    if 'input_data' in st.session_state:
-                        del st.session_state.input_data
-            except Exception as e:
-                st.error(f"Error reading CSV file: {str(e)}")
-                if 'input_data' in st.session_state:
-                    del st.session_state.input_data
-        else:
-            if 'input_data' in st.session_state:
-                del st.session_state.input_data
-
-    else:
-        # Guest: anonymized dataset description and load dummy data
-        st.session_state.data_source = 'dummy'
-        st.caption("With guest access, an anonymized dataset will be used for optimization")
+    if uploaded_file is not None:
         try:
-            dummy_data_path = os.path.join('data', 'dummy_data.csv')
-            if os.path.exists(dummy_data_path):
-                df_dummy = pd.read_csv(dummy_data_path)
-                st.session_state.input_data = df_dummy
+            df = pd.read_csv(uploaded_file)
+            is_valid, errors = validate_data_schema(df)
+            if is_valid:
+                st.session_state.input_data = df
+                st.success("Data uploaded and validated successfully.")
             else:
+                st.error("Data validation failed. Please fix the following issues:")
+                for error in errors:
+                    st.error(f"  • {error}")
                 if 'input_data' in st.session_state:
                     del st.session_state.input_data
         except Exception as e:
-            st.error(f"Error loading anonymized data: {str(e)}")
+            st.error(f"Error reading CSV file: {str(e)}")
             if 'input_data' in st.session_state:
                 del st.session_state.input_data
+    else:
+        if 'input_data' in st.session_state:
+            del st.session_state.input_data
+
+    st.divider()
+
+elif user_type == 'guest':
+    # Guest: Load anonymized dataset
+    st.session_state.data_source = 'dummy'
+    try:
+        dummy_data_path = os.path.join('data', 'dummy_data.csv')
+        if os.path.exists(dummy_data_path):
+            df_dummy = pd.read_csv(dummy_data_path)
+            st.session_state.input_data = df_dummy
+        else:
+            if 'input_data' in st.session_state:
+                del st.session_state.input_data
+    except Exception as e:
+        st.error(f"Error loading anonymized data: {str(e)}")
+        if 'input_data' in st.session_state:
+            del st.session_state.input_data
 
 # Optimization Parameters Section
-st.divider()
 st.subheader("Optimization Parameters")
 
 # Default storage capacity: from secrets in Client mode, 2000 in demo (guest) mode
-default_storage = _client_cap if user_type == 'client' else 2000
+default_storage = client_storage_cap if user_type == 'client' else 2000
 if 'storage_capacity_initialized' not in st.session_state:
     st.session_state.storage_capacity = default_storage
     st.session_state.storage_capacity_initialized = True
 else:
     # Update default only if user hasn't customized it and mode changed
-    if st.session_state.storage_capacity in [_client_cap, 2000]:
+    if st.session_state.storage_capacity in [client_storage_cap, 2000]:
         st.session_state.storage_capacity = default_storage
 
 # Holding Cost Percentage
@@ -215,169 +235,71 @@ with st.expander("Sensitivity Analysis", expanded=False):
     
     # Fixed Order Cost Sensitivity
     if st.session_state.sens_enable_fixed_order_cost:
-        st.markdown("### Fixed Order Cost")
-        st.markdown("**Fixed Order Cost:** Fixed administrative cost per order, regardless of order size")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            order_low = st.number_input(
-                "Low End ($)",
-                min_value=0.01,
-                value=25.0,
-                step=1.0,
-                key='order_low',
-                help="Low end of range (must be > 0)"
-            )
-        with col2:
-            min_order_high = order_low + 0.01
-            order_high = st.number_input(
-                "High End ($)",
-                min_value=float(min_order_high),
-                value=max(100.0, min_order_high),
-                step=1.0,
-                key='order_high',
-                help="High end of range (must be > low end)"
-            )
-            if order_high <= order_low:
-                st.error("High end must be greater than low end")
-        with col3:
-            order_step = st.number_input(
-                "Step Size ($)",
-                min_value=0.01,
-                value=25.0,
-                step=1.0,
-                key='order_step',
-                help="Increment between values"
-            )
-    
+        order_low, order_high, order_step = _render_sensitivity_range(
+            "Fixed Order Cost", "Low End ($)", "High End ($)", "Step Size ($)",
+            'order_low', 'order_high', 'order_step',
+            25.0, 100.0, 25.0, 0.01, 1.0
+        )
+    else:
+        order_low = order_high = order_step = None
+
     # Storage Capacity Sensitivity
     if st.session_state.sens_enable_storage_capacity:
-        st.markdown("### Storage Capacity")
-        st.markdown("**Storage Capacity:** Maximum total number of bottles that can be stored in inventory")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            storage_low = st.number_input(
-                "Low End (bottles)",
-                min_value=1,
-                value=1500,
-                step=1,
-                key='storage_low',
-                help="Low end of range (must be > 0)"
-            )
-        with col2:
-            min_storage_high = int(storage_low) + 1
-            storage_high = st.number_input(
-                "High End (bottles)",
-                min_value=min_storage_high,
-                value=max(2500, min_storage_high),
-                step=1,
-                key='storage_high',
-                help="High end of range (must be > low end)"
-            )
-            if storage_high <= storage_low:
-                st.error("High end must be greater than low end")
-        with col3:
-            storage_step = st.number_input(
-                "Step Size (bottles)",
-                min_value=1,
-                value=100,
-                step=1,
-                key='storage_step',
-                help="Increment between values"
-            )
-    
+        storage_low, storage_high, storage_step = _render_sensitivity_range(
+            "Storage Capacity", "Low End (bottles)", "High End (bottles)", "Step Size (bottles)",
+            'storage_low', 'storage_high', 'storage_step',
+            1500, 2500, 100, 1, 1
+        )
+    else:
+        storage_low = storage_high = storage_step = None
+
     # Service Level Sensitivity
     if st.session_state.sens_enable_service_level:
-        st.markdown("### Service Level")
-        st.markdown("**Service Level:** Target probability of not experiencing a stockout during lead time")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            service_low = st.number_input(
-                "Low End (%)",
-                min_value=0.01,
-                value=90.0,
-                step=0.1,
-                key='service_low',
-                help="Low end of range (must be > 0)"
-            )
-        with col2:
-            min_service_high = service_low + 0.01
-            service_high = st.number_input(
-                "High End (%)",
-                min_value=float(min_service_high),
-                value=max(99.0, min_service_high),
-                step=0.1,
-                key='service_high',
-                help="High end of range (must be > low end)"
-            )
-            if service_high <= service_low:
-                st.error("High end must be greater than low end")
-        with col3:
-            service_step = st.number_input(
-                "Step Size (%)",
-                min_value=0.01,
-                value=2.0,
-                step=0.1,
-                key='service_step',
-                help="Increment between values"
-            )
-    
+        service_low, service_high, service_step = _render_sensitivity_range(
+            "Service Level", "Low End (%)", "High End (%)", "Step Size (%)",
+            'service_low', 'service_high', 'service_step',
+            90.0, 99.0, 2.0, 0.01, 0.1
+        )
+    else:
+        service_low = service_high = service_step = None
+
     # Holding Cost Sensitivity
     if st.session_state.sens_enable_holding_cost:
-        st.markdown("### Holding Cost %")
-        st.markdown("**Holding Cost %:** Percentage of item cost that represents the annual holding cost")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            holding_low = st.number_input(
-                "Low End (%)",
-                min_value=0.01,
-                value=15.0,
-                step=0.1,
-                key='holding_low',
-                help="Low end of range (must be > 0)"
-            )
-        with col2:
-            min_holding_high = holding_low + 0.01
-            holding_high = st.number_input(
-                "High End (%)",
-                min_value=float(min_holding_high),
-                value=max(35.0, min_holding_high),
-                step=0.1,
-                key='holding_high',
-                help="High end of range (must be > low end)"
-            )
-            if holding_high <= holding_low:
-                st.error("High end must be greater than low end")
-        with col3:
-            holding_step = st.number_input(
-                "Step Size (%)",
-                min_value=0.01,
-                value=5.0,
-                step=0.1,
-                key='holding_step',
-                help="Increment between values"
-            )
+        holding_low, holding_high, holding_step = _render_sensitivity_range(
+            "Holding Cost %", "Low End (%)", "High End (%)", "Step Size (%)",
+            'holding_low', 'holding_high', 'holding_step',
+            15.0, 35.0, 5.0, 0.01, 0.1
+        )
+    else:
+        holding_low = holding_high = holding_step = None
     
-    # Store enabled sensitivity parameters
+    # Store enabled sensitivity parameters (only when low, high, step valid and high > low, step > 0)
+    def _valid_sens_params(low, high, step):
+        return (
+            low is not None and high is not None and step is not None
+            and high > low and step > 0
+        )
+
     enabled_analyses = {}
-    if st.session_state.sens_enable_fixed_order_cost and order_low is not None:
+    if st.session_state.sens_enable_fixed_order_cost and _valid_sens_params(order_low, order_high, order_step):
         enabled_analyses['fixed_order_cost'] = {
             'low': order_low,
             'high': order_high,
             'step': order_step
         }
-    if st.session_state.sens_enable_storage_capacity and storage_low is not None:
+    if st.session_state.sens_enable_storage_capacity and _valid_sens_params(storage_low, storage_high, storage_step):
         enabled_analyses['storage_capacity'] = {
             'low': int(storage_low),
             'high': int(storage_high),
             'step': int(storage_step)
         }
-    if st.session_state.sens_enable_service_level and service_low is not None:
+    if st.session_state.sens_enable_service_level and _valid_sens_params(service_low, service_high, service_step):
         enabled_analyses['service_level'] = {
             'low': service_low,
             'high': service_high,
             'step': service_step
         }
-    if st.session_state.sens_enable_holding_cost and holding_low is not None:
+    if st.session_state.sens_enable_holding_cost and _valid_sens_params(holding_low, holding_high, holding_step):
         enabled_analyses['holding_cost_pct'] = {
             'low': holding_low,
             'high': holding_high,
@@ -438,7 +360,7 @@ with col1:
 
 with col3:
     # Run Optimization button
-    if st.button("Run Optimization →", type="primary", key='run_optimization', use_container_width=True):
+    if st.button("Run Optimization →", type="primary", key='run_optimization', width='stretch'):
         # Check if input data is available
         if 'input_data' not in st.session_state or st.session_state.input_data is None:
             st.error("No data available. Please upload a valid CSV file (as a client) or ensure anonymized data has loaded.")

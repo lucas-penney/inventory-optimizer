@@ -1,57 +1,10 @@
 import streamlit as st
 import matplotlib.pyplot as plt
 
-from utils.ui_components import build_etl_flowchart, page_title
-
+from utils.ui_components import build_etl_flowchart, get_shared_page_styles, page_title
 
 # Page configuration with custom styling
-st.markdown("""
-    <style>
-    .main-title {
-        font-size: 3rem;
-        font-weight: 700;
-        color: #1e7b34;
-        text-align: center;
-        margin-bottom: 0.5rem;
-    }
-    .subtitle {
-        font-size: 1.3rem;
-        color: #2c5aa0;
-        text-align: center;
-        margin-bottom: 3rem;
-        font-style: italic;
-    }
-    .section-header {
-        font-size: 1.8rem;
-        font-weight: 600;
-        color: #1e7b34;
-        margin-top: 2rem;
-        margin-bottom: 1rem;
-        border-bottom: 2px solid #2c5aa0;
-        padding-bottom: 0.5rem;
-    }
-    .methodology-card {
-        background-color: #f0f8ff;
-        border-left: 4px solid #2c5aa0;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        border-radius: 5px;
-    }
-    .methodology-title {
-        font-size: 1.3rem;
-        font-weight: 600;
-        color: #1e7b34;
-        margin-bottom: 0.5rem;
-    }
-    .info-box {
-        background-color: #e8f5e9;
-        border-left: 4px solid #1e7b34;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        border-radius: 5px;
-    }
-    </style>
-""", unsafe_allow_html=True)
+st.markdown(get_shared_page_styles(), unsafe_allow_html=True)
 
 # Page Title
 page_title("Methodology & Pipeline")
@@ -60,7 +13,7 @@ page_title("Methodology & Pipeline")
 st.markdown('<p class="section-header">1. ETL Pipeline</p>', unsafe_allow_html=True)
 
 st.markdown("""
-The flowchart below documents the ETL process implemented in `scripts/local_etl.py`. Three raw .xslx files are ingested and the result is a  clean .csv file for input into the PuLP optimization solver.
+The flowchart below documents the ETL process implemented in `scripts/local_etl.py`. Three raw .xlsx files are ingested and the result is a  clean .csv file for input into the PuLP optimization solver.
 """)
 
 # ETL flowchart
@@ -72,11 +25,23 @@ plt.close(etl_fig)
 st.markdown('<p class="section-header">2. Data Anonymization</p>', unsafe_allow_html=True)
 
 st.markdown("""
-Documentation of how client data is anonymized for demo use.
+Client data is anonymized for demo use via **`scripts/anonymizer.py`**, which reads the cleaned client dataset and produces a synthetic dataset suitable for public demonstration. The steps are:
 """)
 
-# Placeholder for data optimization content
-st.info("**Coming soon** — Data anonymization flow chart.")
+with st.container(border=True):
+    st.markdown("""
+    **1. Product names** — Replaced with generic identifiers (`Wine_SKU_001`, `Wine_SKU_002`, …).
+    
+    **2. Winery names** — Unique wineries are mapped to anonymized labels (`Winery_01`, `Winery_02`, …); missing values remain as `NA`.
+    
+    **3. Numerical perturbation** — Sales (monthly and annual), unit cost, reorder point, and max level are multiplied by random factors, preserving approximate scale and relationships while obscuring true values.
+    
+    **4. Lead time** — Each lead time (days) is shifted by -1, 0, or +1 days at random and clipped to a minimum of 1 day.
+    
+    **5. Wholesale vs Direct** — The distribution channel is shuffled within volume tiers (Low / Med / High by annual sales) so that wine-channel linkage is broken while tier structure is preserved.
+    
+    The anonymized output is written to `data/dummy_data.csv` and used as the demo input for the optimizer.
+    """)
 
 # Section 3: Mathematical Model
 st.markdown('<p class="section-header">3. Mathematical Model</p>', unsafe_allow_html=True)
@@ -88,7 +53,7 @@ The inventory optimization problem is formulated as a Mixed-Integer Linear Progr
 with st.container(border=True):
     st.markdown('<p class="methodology-title">Problem Structure</p>', unsafe_allow_html=True)
     st.markdown("""
-    The inventory system operates under a **continuous review (R, M) policy**:
+    The inventory system operates under a continuous review (R, M) policy:
     - **R** (Reorder Point): Inventory level that triggers a new order
     - **M** (Order-Up-To Level): Target inventory level after replenishment
     - **Q = M - R**: Order quantity (gap between M and R)
@@ -118,7 +83,7 @@ with st.container(border=True):
     - $S$: Fixed administrative cost per order (\$50)
 
     **Capacity and Policy Parameters:**
-    - $V_{\max}$: Maximum storage capacity (bottles), configured in the optimizer
+    - $V_{\max}$: Maximum storage capacity (bottles)
     - $V_i$: Storage space required per bottle of wine $i$ (assumed to be 1 for all wines)
     - $Z_{LT,i}$: Standard normal quantile for the target service level for wine $i$ (lead-time context; $Z_{LT,i} \approx 1.645$ for 95%)
     - $SS_i$: Safety stock for wine $i$, calculated as $SS_i = Z_{LT,i} \times \sigma_{LT,i}$
@@ -168,9 +133,9 @@ with st.container(border=True):
     **Constraint 3 – Safety Stock Requirement:**
     """)
     st.latex(r"""
-    R_i \geq 0.5 \times SS_i + \mu_{LT,i} \quad \text{for all } i \in I
+    R_i \geq SS_i + \mu_{LT,i} \quad \text{for all } i \in I
     """)
-    st.markdown("The reorder point must be sufficient to cover expected demand during lead time plus a portion of the safety stock to maintain the target service level.")
+    st.markdown("The reorder point must be sufficient to cover expected demand during lead time plus the full safety stock to maintain the target service level.")
     
     st.markdown("""
     **Constraint 4 – Storage Capacity:**
@@ -232,7 +197,6 @@ with col1:
             <li>Requires academic or commercial license</li>
             <li>Used in the original research and analysis</li>
             <li>Superior performance for large-scale MILP problems</li>
-            <li>Advanced presolving and cutting plane techniques</li>
     </div>
     """, unsafe_allow_html=True)
 
@@ -242,11 +206,10 @@ with col2:
         <div class="methodology-title">PuLP with CBC</div>
         <p><strong>Current Implementation</strong></p>
         <ul>
-            <li>Open-source alternative using COIN-OR CBC solver</li>
-            <li>No licensing restrictions for demo/portfolio purposes</li>
-            <li>Sufficient performance for this problem size (~60-100 wines)</li>
-            <li>Makes the tool accessible without solver licensing</li>
             <li>Free and open-source (BSD license)</li>
+            <li>No licensing restrictions for demo/portfolio purposes</li>
+            <li>Makes the tool accessible without solver licensing</li>
+            <li>Sufficient performance for this problem size (~60-100 wines)</li>
         </ul>
     </div>
     """, unsafe_allow_html=True)
@@ -273,9 +236,9 @@ with st.container(border=True):
     **Standard Wines:**
     - Minimum order: 1 case (12 bottles)
     - Order quantities must be multiples of 12 bottles
-    - Options range from MOQ up to approximately 3× the Economic Order Quantity (EOQ)
+    - Options range from MOQ up to approximately 3x the Economic Order Quantity (EOQ)
     
-    **Anchor Wines (By-the-Bottle):**
+    **Anchor Wines:**
     - Minimum order: 1 bottle
     - Order quantity options: [1, 2, 3, ..., 12] bottles
     - Only applies to anchor wines that can be purchased by the bottle
@@ -291,10 +254,8 @@ with st.container(border=True):
     st.markdown('<p class="methodology-title">Anchor Wine Logic</p>', unsafe_allow_html=True)
     st.markdown("""
     **What are Anchor Wines?**
-    - Premium wines sold by the glass
-    - Strategically priced to redirect customers from the cheapest menu options
-    - Typically have low annual demand
-    - Used as a psychological pricing tool
+    - The client defines anchor wines as those strategically priced to redirect customers from the cheapest menu options
+    - Typically have low annual demand and are used as a psychological pricing tool
     
     **Ordering Rules:**
     - If an anchor wine can be ordered by the bottle (Is_By_the_Bottle = 1), order quantities are [1-12] bottles
@@ -304,20 +265,16 @@ with st.container(border=True):
 
 with st.container(border=True):
     st.markdown('<p class="methodology-title">Order Quantity Menu Generation</p>', unsafe_allow_html=True)
-    st.markdown("""
+    st.markdown(r"""
     The optimization model pre-generates a "menu" of valid order quantity options for each wine:
     
     **Standard Wines:**
-    1. Calculate Economic Order Quantity (EOQ): √(2 × D × S / H)
-    2. Set upper bound: max(MOQ, 3 × EOQ)
+    1. Calculate Economic Order Quantity (EOQ): √(2 x D x S / H)
+    2. Set upper bound: max(MOQ, 3 x EOQ)
     3. Generate options: [MOQ, MOQ+12, MOQ+24, ..., upper_bound] in multiples of 12
     
     **Anchor Wines (By-the-Bottle):**
     - Options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] bottles
-    
-    **Direct Wineries:**
-    - Standard menu generation applies to individual wines
-    - Big-M constraints ensure winery-level minimums are met
     
     **Cost Pre-calculation:**
     - For each wine $i$ and each option $k$, calculate $C_{ik} = (Q_{ik}/2 + SS_i) \times H_i + (D_i/Q_{ik}) \times S$
@@ -326,7 +283,7 @@ with st.container(border=True):
 
 with st.container(border=True):
     st.markdown('<p class="methodology-title">Service Level Target</p>', unsafe_allow_html=True)
-    st.markdown("""
+    st.markdown(r"""
     - **Target Service Level**: 95% (probability of not experiencing a stockout during lead time)
     - **Z-score**: $Z_{LT,i} \approx 1.645$ (from standard normal distribution)
     - **Safety Stock Calculation**: $SS_i = Z_{LT,i} \times \sigma_{LT,i}$
@@ -346,12 +303,12 @@ with col1:
     <div class="methodology-card">
         <div class="methodology-title">Model Assumptions</div>
         <ul>
-            <li><strong>Deterministic Lead Times:</strong> Lead times are assumed fixed (stochastic extension discussed in report)</li>
+            <li><strong>Deterministic Lead Times:</strong> Lead times are assumed fixed</li>
             <li><strong>Stationary Demand:</strong> Single-period model assumes average annual conditions</li>
             <li><strong>Fixed Holding Cost:</strong> 25% of unit cost (industry benchmark)</li>
             <li><strong>Fixed Order Cost:</strong> $50 per order (estimated from consultation)</li>
             <li><strong>Normal Distribution:</strong> Demand during lead time follows normal distribution</li>
-            <li><strong>Uniform Storage:</strong> All bottles require same storage space (V_i = 1)</li>
+            <li><strong>Uniform Storage:</strong> All bottles require same storage space</li>
         </ul>
     </div>
     """, unsafe_allow_html=True)
@@ -362,7 +319,7 @@ with col2:
         <div class="methodology-title">Model Limitations</div>
         <ul>
             <li><strong>Single-Echelon:</strong> Single warehouse, no multi-location optimization</li>
-            <li><strong>No Quantity Discounts:</strong> Base model assumes fixed unit costs (extension available)</li>
+            <li><strong>No Quantity Discounts:</strong> Base model assumes fixed unit costs</li>
             <li><strong>No Seasonal Planning:</strong> No multi-period/seasonal demand modeling</li>
             <li><strong>Binding Capacity:</strong> Storage constraint is typically binding, limiting flexibility</li>
             <li><strong>Static Parameters:</strong> Cost parameters don't vary over time</li>
@@ -383,7 +340,7 @@ Detailed explanations of user-configurable optimization parameters and their imp
 param_tabs = st.tabs(["Service Level", "Holding Cost %", "Fixed Order Cost", "Storage Capacity"])
 
 with param_tabs[0]:
-    st.markdown("""
+    st.markdown(r"""
     ### Service Level (%)
     
     **Definition:** The target probability of not experiencing a stockout during the supplier lead time period.
@@ -395,10 +352,9 @@ with param_tabs[0]:
     
     **Impact:**
     - Higher service levels require more safety stock
-    - Increases holding costs (more buffer inventory)
-    - Reduces stockout frequency and improves customer satisfaction
+    - Increases holding costs but reduces stockout frequency
     - Typical range: 80% to 99%
-    - Default: 95% (industry standard for critical inventory)
+    - Default: 95% 
     
     **Trade-off:** Higher service levels cost more but reduce stockout risk.
     """)
@@ -407,13 +363,7 @@ with param_tabs[1]:
     st.markdown("""
     ### Holding Cost Percentage
     
-    **Definition:** Annual holding cost expressed as a percentage of the unit cost per bottle.
-    
-    **Components:**
-    - Storage costs (warehouse space, climate control)
-    - Insurance and risk
-    - Opportunity cost of capital
-    - Obsolescence and spoilage risk
+    **Definition:** Annual holding cost includes storage costs, insurance and risk, opportunity cost of capital, obsolescence and spoilage risk.
     
     **Calculation:**
     - Unit holding cost: $H_i = \\text{COST} \\times (\\text{holding cost \\%} / 100)$
@@ -422,57 +372,47 @@ with param_tabs[1]:
     **Impact:**
     - Higher holding costs encourage smaller, more frequent orders
     - Lower holding costs allow larger bulk orders
-    - Default: 25% (industry benchmark for wine inventory)
     - Typical range: 15% to 35%
+    - Default: 25% 
+    
     
     **Trade-off:** Higher holding costs favor lower inventory levels but may increase ordering frequency.
     """)
 
 with param_tabs[2]:
-    st.markdown("""
-    ### Fixed Order Cost ($)
+    st.markdown(r"""
+    ### Fixed Order Cost (\$)
     
-    **Definition:** Administrative cost incurred per purchase order, regardless of order size.
-    
-    **Components:**
-    - Order processing and paperwork
-    - Communication with suppliers
-    - Receiving and inspection
-    - Administrative overhead
+    **Definition:** Administrative cost incurred per purchase order, including order processing and paperwork, communication with suppliers, receiving and inspection, and administrative overhead.
     
     **Calculation:**
-    - Annual ordering cost for wine $i$: $(D_i / Q) \\times S$
+    - Annual ordering cost for wine $i$: $(D_i / Q) \times S$
     - Where $D_i$ is annual demand and $Q$ is order quantity
     
     **Impact:**
     - Higher fixed costs incentivize larger, less frequent orders
     - Lower fixed costs allow smaller, more frequent orders
-    - Default: $50 (estimated from Purchasing Manager consultation)
-    - Typical range: $25 to $200
+    - Typical range: \$25 to \$200
+    - Default: $50
     
     **Trade-off:** Higher fixed costs favor larger orders to spread costs over more units.
     """)
 
 with param_tabs[3]:
-    st.markdown("""
+    st.markdown(r"""
     ### Storage Capacity (bottles)
     
     **Definition:** Maximum total number of bottles that can be stored in the warehouse at any time.
     
-    **Constraint Type:** Hard capacity limit (binding constraint in most solutions)
-    
     **Calculation:**
     - Constraint: $\sum_i M_i \leq V_{\max}$
     - Where $M_i$ is the order-up-to level for each wine
-    - Represents maximum inventory when all wines are at their M levels
     
     **Impact:**
     - Tighter capacity forces prioritization of high-velocity items
     - May limit stock levels for slower-moving wines
     - Binding constraint prevents full cost optimization
     - Default: 2000 bottles for demo
-    
-    **Sensitivity Analysis Finding:** Adding the first 68 bottles of capacity saves approximately $7.54 per bottle per year.
     
     **Trade-off:** More capacity enables better cost optimization but requires physical space investment.
     """)
@@ -485,5 +425,5 @@ st.markdown("<br>", unsafe_allow_html=True)
 col1, col2, col3 = st.columns([1, 2, 1])
 
 with col1:
-    if st.button("← Back", use_container_width=True):
+    if st.button("← Back", width='stretch'):
         st.switch_page("pages/solver_ui.py")
